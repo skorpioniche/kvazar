@@ -7,6 +7,9 @@ namespace WebDriverScraping
 {
     class Program
     {
+        private static int numberGood = 0;
+        private static int numberBad = 0;
+
         static void Main(string[] args)
         {
             while (true)
@@ -27,6 +30,9 @@ namespace WebDriverScraping
             // Initialize the Chrome Driver
             using (var driver = new ChromeDriver())
             {
+                driver.Manage().Timeouts().SetPageLoadTimeout(new TimeSpan(0, 1, 0, 0));
+                driver.Manage().Timeouts().SetScriptTimeout(new TimeSpan(0, 0, 0, 40));
+                driver.Manage().Timeouts().ImplicitlyWait(new TimeSpan(0, 0, 0, 2));
                 // Go to the home page
                 driver.Navigate().GoToUrl("http://wap.mgates.ru/login/");
 
@@ -41,32 +47,28 @@ namespace WebDriverScraping
 
                 // and click the login button
                 loginButton.Click();
-                int numberGood = 0;
-                int numberBad = 0;
-                while (true)
+
+                driver.Navigate().GoToUrl("http://quasars.mgates.ru/expedition.php");
+                var expiditionTypeDropDown = driver.FindElementByName("exp_type");
+                expiditionTypeDropDown.FindElement(By.CssSelector("option[value='1']")).Click();
+
+                var expiditionTimeDropDown = driver.FindElementByName("exp_time");
+                expiditionTimeDropDown.FindElement(By.CssSelector("option[value='3']")).Click();
+
+                if (driver.FindElementsByName("send").Count > 0)
                 {
-                    driver.Navigate().GoToUrl("http://quasars.mgates.ru/expedition.php");
-                    var expiditionTypeDropDown = driver.FindElementByName("exp_type");
-                    expiditionTypeDropDown.FindElement(By.CssSelector("option[value='1']")).Click();
-
-                    var expiditionTimeDropDown = driver.FindElementByName("exp_time");
-                    expiditionTimeDropDown.FindElement(By.CssSelector("option[value='3']")).Click();
-
-                    if (driver.FindElementsByName("send").Count > 0)
-                    {
-                        numberGood++;
-                        var sendButton = driver.FindElementByName("send");
-                        sendButton.Click();
-                        Console.WriteLine("Отправил опять эту фигню, попытка #" + numberGood);
-                    }
-                    else
-                    {
-                        numberBad++;
-                        Console.WriteLine("Фигня не отправилась, попытка #" + numberBad);
-                    }
-
-                    Thread.Sleep(10000);
+                    numberGood++;
+                    var sendButton = driver.FindElementByName("send");
+                    sendButton.Click();
+                    Console.WriteLine("Отправил опять эту фигню, попытка #" + numberGood);
                 }
+                else
+                {
+                    numberBad++;
+                    Console.WriteLine("Фигня не отправилась, попытка #" + numberBad);
+                }
+                driver.Quit();
+                Thread.Sleep(10000);         
             }
         }
     }
