@@ -48,27 +48,31 @@ namespace WebDriverScraping
                 // and click the login button
                 loginButton.Click();
 
-                driver.Navigate().GoToUrl("http://quasars.mgates.ru/expedition.php");
-                var expiditionTypeDropDown = driver.FindElementByName("exp_type");
-                expiditionTypeDropDown.FindElement(By.CssSelector("option[value='1']")).Click();
-
-                var expiditionTimeDropDown = driver.FindElementByName("exp_time");
-                expiditionTimeDropDown.FindElement(By.CssSelector("option[value='3']")).Click();
-
-                if (driver.FindElementsByName("send").Count > 0)
+                for (int i = 0; i < 30; i++)
                 {
-                    numberGood++;
-                    var sendButton = driver.FindElementByName("send");
-                    sendButton.Click();
-                    Console.WriteLine("Отправил опять эту фигню, попытка #" + numberGood);
-                }
-                else
-                {
-                    numberBad++;
-                    Console.WriteLine("Фигня не отправилась, попытка #" + numberBad);
+                    driver.Navigate().GoToUrl("http://quasars.mgates.ru/expedition.php");
+                    var expiditionTypeDropDown = driver.FindElementByName("exp_type");
+                    expiditionTypeDropDown.FindElement(By.CssSelector("option[value='1']")).Click();
+
+                    var expiditionTimeDropDown = driver.FindElementByName("exp_time");
+                    expiditionTimeDropDown.FindElement(By.CssSelector("option[value='3']")).Click();
+
+                    if (driver.FindElementsByName("send").Count > 0)
+                    {
+                        numberGood++;
+                        var sendButton = driver.FindElementByName("send");
+                        sendButton.Click();
+                        Console.WriteLine("Отправил опять эту фигню, попытка #" + numberGood);
+                    }
+                    else
+                    {
+                        numberBad++;
+                        Console.WriteLine("Фигня не отправилась, попытка #" + numberBad);
+                    }
+                    
+                    Thread.Sleep(10000);
                 }
                 driver.Quit();
-                Thread.Sleep(10000);         
             }
         }
     }
