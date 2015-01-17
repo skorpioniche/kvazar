@@ -12,20 +12,25 @@ namespace WebDriverScraping
 
         static void Main(string[] args)
         {
+            
             while (true)
             {
                 try
                 {
-                    StartKvazars();
+                    var site = "http://wap.mgates.ru/";
+                    var expedUrl = "http://quasars.mgates.ru/expedition.php";
+                    var login = "";
+                    var password = "";
+                    StartKvazars(site, expedUrl, login, password);
                 }
-                catch (Exception)
+                catch (Exception exception)
                 {
-                    Console.WriteLine("Произошла неведомая фигня, стартуем опять");
+                    Console.WriteLine(exception.Message);
                 }
             }     
         }
 
-        public static void StartKvazars()
+        public static void StartKvazars(string site, string expeditionUrl, string login, string password)
         {
             // Initialize the Chrome Driver
             using (var driver = new ChromeDriver())
@@ -34,7 +39,7 @@ namespace WebDriverScraping
                 driver.Manage().Timeouts().SetScriptTimeout(new TimeSpan(0, 0, 0, 40));
                 driver.Manage().Timeouts().ImplicitlyWait(new TimeSpan(0, 0, 0, 2));
                 // Go to the home page
-                driver.Navigate().GoToUrl("http://wap.mgates.ru/login/");
+                driver.Navigate().GoToUrl(site+"login/");
 
                 // Get User Name field, Password field and Login Button
                 var userNameField = driver.FindElementByName("login");
@@ -42,15 +47,15 @@ namespace WebDriverScraping
                 var loginButton = driver.FindElementByName("enter");
 
                 // Type user name and password
-                userNameField.SendKeys("kvakusha");
-                userPasswordField.SendKeys("100500z");
+                userNameField.SendKeys(login);
+                userPasswordField.SendKeys(password);
 
                 // and click the login button
                 loginButton.Click();
 
                 for (int i = 0; i < 30; i++)
                 {
-                    driver.Navigate().GoToUrl("http://quasars.mgates.ru/expedition.php");
+                    driver.Navigate().GoToUrl(expeditionUrl);
                     var expiditionTypeDropDown = driver.FindElementByName("exp_type");
                     expiditionTypeDropDown.FindElement(By.CssSelector("option[value='1']")).Click();
 
