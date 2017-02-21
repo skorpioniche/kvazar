@@ -1,2 +1,9 @@
 bin/
 obj/
+
+*.xml
+selenium/Selenium.WebDriverBackedSelenium.xml
+selenium/ThoughtWorks.Selenium.Core.xml
+selenium/WebDriver.Support.xml
+selenium/WebDriver.xml
+chromedriver.exe
