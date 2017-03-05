@@ -11,6 +11,8 @@ namespace WebDriverScraping
     {
         private static int numberGood = 0;
         private static int numberBad = 0;
+        private const int defaultTimeout = 100000;
+        private static int timeout = defaultTimeout;
 
         static void Main(string[] args)
         {
@@ -25,17 +27,29 @@ namespace WebDriverScraping
                 }
                 catch (Exception exception)
                 {
-                    Console.WriteLine(exception.Message);
+                    Console.WriteLine(DateTime.Now.ToShortTimeString() + exception.Message);
                     try
                     {
-                        SendSms("Я упал: " + exception.Message.Remove(45));
+                        var message = "Я упал: ";
+                        if (exception.Message != null)
+                        {
+                            message += exception.ToString() + exception.Message;
+                            if (message.Length >= 45)
+                            {
+                                message += message.Remove(45);
+                            }
+                        }
+
+                        SendSms(message);
+
                     }
                     catch (Exception e)
                     {
                         Console.WriteLine(e.Message);
                     }
 
-                    Thread.Sleep(3600000);
+                    Thread.Sleep(timeout);
+                    timeout *= 2;
                 }
             }
         }
@@ -45,9 +59,9 @@ namespace WebDriverScraping
             // Initialize the Chrome Driver
             using (var driver = new ChromeDriver())
             {
-                driver.Manage().Timeouts().SetPageLoadTimeout(new TimeSpan(0, 1, 0, 0));
+                driver.Manage().Timeouts().SetPageLoadTimeout(new TimeSpan(0, 2, 0, 0));
                 driver.Manage().Timeouts().SetScriptTimeout(new TimeSpan(0, 0, 0, 40));
-                driver.Manage().Timeouts().ImplicitlyWait(new TimeSpan(0, 0, 0, 2));
+                driver.Manage().Timeouts().ImplicitlyWait(new TimeSpan(0, 0, 0, 1));
                 // Go to the home page
                 driver.Navigate().GoToUrl(site + "login/");
 
@@ -64,58 +78,79 @@ namespace WebDriverScraping
                 loginButton.Click();
 
                 bool thereisDuel = true;
-                while (thereisDuel)
+                var myHP = GetMyHp(driver);
+
+                driver.Navigate().GoToUrl(site + "profile/");
+                var myRate = GetRate(driver, site);
+
+                driver.Navigate().GoToUrl(site + "duel/");
+                try
                 {
-                    var myHP = GetMyHp(driver);
-                    thereisDuel = StartDuel(driver, site, myHP);
-                    Thread.Sleep(10000);
+                    myHP = GetMyHp(driver);
+                }
+                catch { }
+
+                while (thereisDuel)
+                {    
+                    thereisDuel = StartDuel(driver, site, myHP, myRate);
+                    Thread.Sleep(5000);
                     driver.Navigate().GoToUrl(site);
                 }
 
                 driver.Quit();
-                Thread.Sleep(600000);
             }
+
+            timeout = defaultTimeout;
+            Thread.Sleep(900000);
         }
 
-        public static bool StartDuel(ChromeDriver driver, string site, int myHP)
+        public static bool StartDuel(ChromeDriver driver, string site, int myHP, int myRate)
         {
             //find a enemy
-            int maxAttempt = 50;
+            int maxAttempt = 300;
+            int maxAttemptToFindWIthRate = -3;
+            int attemptToFindWIthRate = 0;
             int attempt = 0;
+            var enemyRate = 0;
             var enemyHp = int.MaxValue;
-            do
-            {
-                driver.Navigate().GoToUrl(site + "duel/");
-                if (!IsAvalibleDuel(driver))
-                {
-                    return false;
-                }
-
-                if (IsActiveDuelNow(driver))
-                {
-                    enemyHp = myHP;
-                }
-                else
-                {
-                    enemyHp = GetEnemyHp(driver);
-                }
-
-                attempt++;
-
-                if (attempt > maxAttempt)
-                {
-                    RaiseFailure("Начальник всё пропало!! Не могу найти противника!!");
-                    attempt = 0;
-                }
-            }
-            while ((enemyHp - myHP) / (double)myHP * 100 > 10.0);
-
-            //attack
+            
             if (!IsActiveDuelNow(driver))
             {
+                do
+                {
+                    do
+                    {
+                        driver.Navigate().GoToUrl(site + "duel/");
+                        if (!IsAvalibleDuel(driver))
+                        {
+                            return false;
+                        }
+                        else
+                        {
+                            enemyHp = GetEnemyHp(driver);
+                        }
+
+                        attempt++;
+
+                        if (attempt > maxAttempt)
+                        {
+                            RaiseFailure("Не могу найти противника!! Попыток:" + attempt, driver);
+                            attempt = 0;
+                        }
+                    }
+                    while (!IsEnemyAttracted(enemyHp, myHP));
+
+
+                    //var enemyName = GetEnemyName(driver);
+                    //enemyRate = GetEnemyRate(driver, enemyName, site);
+                    attemptToFindWIthRate++;
+
+                }
+                while (myRate > enemyRate && maxAttemptToFindWIthRate > attemptToFindWIthRate);
+
+                //attack
                 driver.Navigate().GoToUrl(site + "duel/tobattle/");
             }
-            //driver.Navigate().GoToUrl(site + "duel/"); //remove
 
             do
             {
@@ -127,17 +162,23 @@ namespace WebDriverScraping
             return true;
         }
 
+        private static bool IsEnemyAttracted(int enemyHp, int myHP)
+        {
+            var maxHpForEnemy = myHP * 1.08;
+            return maxHpForEnemy > (enemyHp * 1.0);
+        }
+
         private static bool IsAvalibleDuel(ChromeDriver driver)
         {
             var restoreTime = driver.FindElementsById("duels_restore_time");
             return !restoreTime.Any();
         }
 
-        private static void RaiseFailure(string failReason)
+        private static void RaiseFailure(string failReason, ChromeDriver driver)
         {
             //senSMS
-            SendSms(failReason);
-            Thread.Sleep(3600000);
+            SendSms(failReason, driver);
+            Thread.Sleep(timeout);
         }
 
         private static bool IsActiveDuelNow(ChromeDriver driver)
@@ -148,8 +189,8 @@ namespace WebDriverScraping
 
         private static bool IsEndOfAttack(ChromeDriver driver)
         {
-            var infoBlocks = driver.FindElementsByCssSelector(".c_silver.mb5");
-            return infoBlocks.Any();
+            var infoBlocks = driver.FindElementsByCssSelector(".w3card");
+            return !infoBlocks.Any();
         }
 
         private static int GetEnemyHp(ChromeDriver driver)
@@ -180,11 +221,10 @@ namespace WebDriverScraping
                 }
 
                 var stats = card.FindElements(By.ClassName("stat"));
-
                 var enemyAttack = Convert.ToInt32(stats.First().Text.Trim());
                 var myAttack = Convert.ToInt32(stats.Last().Text.Trim());
 
-                var damage = myAttack * coeff - enemyAttack;
+                var damage = myAttack * coeff - enemyAttack * (2.0 - coeff);
                 IWebElement cardLink = card.FindElement(By.ClassName("card"));
 
                 attackPower.Add(new KeyValuePair<double, IWebElement>(damage, cardLink));
@@ -198,12 +238,34 @@ namespace WebDriverScraping
 
         private static int GetMyHp(ChromeDriver driver)
         {
-            //run at main page
-            var myHp = driver.FindElementByCssSelector(".c_da").Text.Replace(" ", string.Empty);
+            //run at duel
+            var myHp = driver.FindElementsByCssSelector(".c_da").First().Text.Replace(" ", string.Empty);
             return Convert.ToInt32(myHp);
         }
 
+        private static int GetRate(ChromeDriver driver, string site)
+        {
+            //run at main page            
+            var rate = driver.FindElementsByCssSelector(".small.c_99.mt10.ml8 .c_da").First().Text.Replace(" ", string.Empty);
+            return Convert.ToInt32(rate);
+        }
 
+        private static string GetEnemyName(ChromeDriver driver)
+        {
+            //run at main page
+            string enemyHp = driver.FindElementByCssSelector(".c_rose.nwr.mb5").Text;
+            return enemyHp;
+        }
+
+        private static int GetEnemyRate(ChromeDriver driver, string enemyName, string site)
+        {
+            driver.Navigate().GoToUrl(site + "online/");
+            var findInput = driver.FindElementByName("slogin");
+            findInput.SendKeys(enemyName);
+
+            findInput.Submit();
+            return GetRate(driver, site);
+        }
 
         private static void SendSms(string message, ChromeDriver driver)
         {
