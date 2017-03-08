@@ -4,6 +4,7 @@ using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace WebDriverScraping
 {
@@ -75,7 +76,7 @@ namespace WebDriverScraping
                 userPasswordField.SendKeys(password);
 
                 // and click the login button
-                loginButton.Click();
+                loginButton.Click();       
 
                 bool thereisDuel = true;
                 var myHP = GetMyHp(driver);
@@ -97,6 +98,9 @@ namespace WebDriverScraping
                     driver.Navigate().GoToUrl(site);
                 }
 
+                StartDungeon(driver, site);
+                Thread.Sleep(2000);
+
                 driver.Quit();
             }
 
@@ -104,16 +108,50 @@ namespace WebDriverScraping
             Thread.Sleep(900000);
         }
 
+        private static void StartDungeon(ChromeDriver driver, string site)
+        {
+            driver.Navigate().GoToUrl(site + "dungeon/");            
+
+            if (IsActiveDuelNow(driver))
+            {
+                ProcessDungeon(driver);
+                driver.Navigate().GoToUrl(site + "dungeon/");
+            }
+
+            var companyes = driver.FindElementsByCssSelector(".cpoint");
+            foreach (var company in companyes)
+            {
+                var href = company.FindElements(By.CssSelector("a")).FirstOrDefault();
+                if (href != null && href.GetAttribute("href") != "http://elem.mobi/story/")
+                {
+                    href.Click();
+                    ProcessDungeon(driver);
+                }
+            }
+
+        }
+
+        private static void ProcessDungeon(ChromeDriver driver)
+        {
+            do
+            {
+                var elemToClick = GetAttackLinkCardForDungeon(driver);
+                elemToClick.Click();
+            }
+            while (!IsEndOfAttack(driver));
+        }
+
         public static bool StartDuel(ChromeDriver driver, string site, int myHP, int myRate)
         {
             //find a enemy
-            int maxAttempt = 300;
-            int maxAttemptToFindWIthRate = -3;
+            int maxAttempt = 500;
+            int maxAttemptToFindWIthRate = 200;
             int attemptToFindWIthRate = 0;
             int attempt = 0;
             var enemyRate = 0;
             var enemyHp = int.MaxValue;
-            
+            var isTopLiga = false;
+
             if (!IsActiveDuelNow(driver))
             {
                 do
@@ -140,13 +178,18 @@ namespace WebDriverScraping
                     }
                     while (!IsEnemyAttracted(enemyHp, myHP));
 
+                    isTopLiga = IsTopInLiga(driver);
+                    var enemyName = GetEnemyName(driver);
+                    enemyRate = int.MaxValue;
+                    if (enemyName.Contains(" ")) //check at bot enemy
+                    { 
+                        enemyRate = GetEnemyRate(driver, enemyName, site);
+                    }
 
-                    //var enemyName = GetEnemyName(driver);
-                    //enemyRate = GetEnemyRate(driver, enemyName, site);
                     attemptToFindWIthRate++;
 
                 }
-                while (myRate > enemyRate && maxAttemptToFindWIthRate > attemptToFindWIthRate);
+                while ((isTopLiga && enemyRate != 0) && maxAttemptToFindWIthRate > attemptToFindWIthRate);
 
                 //attack
                 driver.Navigate().GoToUrl(site + "duel/tobattle/");
@@ -162,9 +205,26 @@ namespace WebDriverScraping
             return true;
         }
 
+        private static bool IsTopInLiga(ChromeDriver driver)
+        {
+            try
+            {
+                var rateBar = driver.FindElementsByCssSelector(".rate.blue").FirstOrDefault();
+                //style="width:34%;
+                var ratePersent = rateBar.GetAttribute("style");
+                var per = Regex.Match(ratePersent, @"\d+").Value;
+                return Convert.ToInt32(per) > 75;
+            }
+            catch
+            {
+                return false;
+            }
+            
+        }
+
         private static bool IsEnemyAttracted(int enemyHp, int myHP)
         {
-            var maxHpForEnemy = myHP * 1.08;
+            var maxHpForEnemy = myHP * 0.98;
             return maxHpForEnemy > (enemyHp * 1.0);
         }
 
@@ -235,6 +295,13 @@ namespace WebDriverScraping
             return elemToClick.Value;
         }
 
+        private static IWebElement GetAttackLinkCardForDungeon(ChromeDriver driver)
+        {
+            var maxStat = driver.FindElementsByCssSelector(".w3card .stat").Max(stat => Convert.ToInt32(stat.Text.Trim()));
+            var result  = driver.FindElementsByCssSelector(".w3card .stat").FirstOrDefault(stat => Convert.ToInt32(stat.Text.Trim()) >= maxStat);
+            return result;
+        }
+
 
         private static int GetMyHp(ChromeDriver driver)
         {
@@ -262,9 +329,17 @@ namespace WebDriverScraping
             driver.Navigate().GoToUrl(site + "online/");
             var findInput = driver.FindElementByName("slogin");
             findInput.SendKeys(enemyName);
-
+            
             findInput.Submit();
-            return GetRate(driver, site);
+
+            if (!driver.Url.Contains("user"))
+            {
+                return 0;
+            }else
+            {
+                return GetRate(driver, site);
+            }
+
         }
 
         private static void SendSms(string message, ChromeDriver driver)
