@@ -14,6 +14,9 @@ namespace WebDriverScraping
         private static int numberBad = 0;
         private const int defaultTimeout = 100000;
         private static int timeout = defaultTimeout;
+        private static int botsCount = 0;
+        private static bool statWasSent;
+        private static int dungeonCount = 0;
 
         static void Main(string[] args)
         {
@@ -35,9 +38,9 @@ namespace WebDriverScraping
                         if (exception.Message != null)
                         {
                             message += exception.ToString() + exception.Message;
-                            if (message.Length >= 45)
+                            if (message.Length >= 65)
                             {
-                                message += message.Remove(45);
+                                message = message.Remove(65);
                             }
                         }
 
@@ -76,31 +79,22 @@ namespace WebDriverScraping
                 userPasswordField.SendKeys(password);
 
                 // and click the login button
-                loginButton.Click();       
+                loginButton.Click();
 
-                bool thereisDuel = true;
-                var myHP = GetMyHp(driver);
+                //while (true)
+                //{
+                //    StartUrfin(driver, site);
+                //    Thread.Sleep(GetSleepInterval(driver));
+                //}
 
-                driver.Navigate().GoToUrl(site + "profile/");
-                var myRate = GetRate(driver, site);
-
-                driver.Navigate().GoToUrl(site + "duel/");
-                try
-                {
-                    myHP = GetMyHp(driver);
-                }
-                catch { }
-
-                while (thereisDuel)
-                {    
-                    thereisDuel = StartDuel(driver, site, myHP, myRate);
-                    Thread.Sleep(5000);
-                    driver.Navigate().GoToUrl(site);
-                }
-
+                
+                StartDuelBlock(site, driver);
                 StartDungeon(driver, site);
+                StartSurvivalBlock(driver, site);
+                StartDailyBlock(driver, site);
                 Thread.Sleep(2000);
-
+                SendStatistic(driver);
+                Thread.Sleep(2000);
                 driver.Quit();
             }
 
@@ -108,9 +102,158 @@ namespace WebDriverScraping
             Thread.Sleep(900000);
         }
 
+        private static void StartDailyBlock(ChromeDriver driver, string site)
+        {
+            if (DateTime.Now.Hour > 22)
+            {
+                driver.Navigate().GoToUrl(site + "daily/");
+                var elements = driver.FindElementsByCssSelector("a.btn.bli.orange.mlra.w180px.mt-15");
+                foreach (var webElement in elements)
+                {
+                    webElement.Click();
+                }
+            }
+        }
+
+        private static void StartDuelBlock(string site, ChromeDriver driver)
+        {
+            bool thereisDuel = true;
+            var myHP = GetMyHp(driver);
+
+            driver.Navigate().GoToUrl(site + "profile/");
+            var myRate = GetRate(driver, site);
+
+            driver.Navigate().GoToUrl(site + "duel/");
+            try
+            {
+                myHP = GetMyHp(driver);
+            }
+            catch
+            {
+            }
+
+            while (thereisDuel)
+            {
+                thereisDuel = StartDuel(driver, site, myHP, myRate);
+                Thread.Sleep(5000);
+                driver.Navigate().GoToUrl(site);
+            }
+        }
+
+        private static void StartSurvivalBlock(ChromeDriver driver, string site)
+        {
+            driver.Navigate().GoToUrl(site + "survival/");
+
+            while (IsSurvivalRequered(driver))
+            {
+                try
+                {
+                    StartSurvival(driver, site);
+                }
+                catch (Exception exception)
+                {
+                    Console.WriteLine("Арена:" + DateTime.Now.ToShortTimeString() + exception.Message);
+                }
+                
+            }
+        }
+
+        private static void StartSurvival(ChromeDriver driver, string site)
+        {
+            driver.Navigate().GoToUrl(site + "survival/join/");
+
+            while (IsSurvivalJoined(driver) && !IsActiveDuelNow(driver))
+            {
+                Thread.Sleep(5000);
+                driver.Navigate().GoToUrl(site + "survival/");
+            }
+
+            if (IsActiveDuelNow(driver))
+            {
+                var cartToAttack = GetSurvivalAttackLinkCard(driver);
+                while (cartToAttack != null)
+                {
+                    cartToAttack.Click();
+                    cartToAttack = GetSurvivalAttackLinkCard(driver);
+                }
+            }
+            else
+            {
+                SurvivalAttempt--;
+            }
+
+            driver.Navigate().GoToUrl(site + "survival/");
+        }
+
+        private static void StartUrfin(ChromeDriver driver, string site)
+        {
+            driver.Navigate().GoToUrl(site + "urfin/start/");
+            while (IsActiveDuelNow(driver))
+            {
+                var cards = driver.FindElementsByCssSelector(".w3card");
+                foreach (var card in cards)
+                {
+                    card.Click();
+                    Thread.Sleep(200);
+                }
+            }
+        }
+
+        private static int GetSleepInterval(ChromeDriver driver)
+        {
+            var timerText = string.Empty;
+            var timers = driver.FindElementsByCssSelector("#time_till_next_invasion");
+            if (timers.Any())
+            {
+                timerText = timers.First().Text;
+            }
+            else
+            {
+                var timers2 = driver.FindElementsByCssSelector("#time_till_boss_gen");
+                if (timers2.Any())
+                {
+                    timerText = timers2.First().Text;
+                }
+            }
+
+            if (string.IsNullOrEmpty(timerText))
+            {
+                return 10000;
+            }
+            else
+            {
+                if (timerText.Contains("д"))
+                {
+                    return 24 * 60 * 1000;
+                }
+                if (timerText.Contains("м"))
+                {
+                    return 60 * 1000;
+                }
+            }
+
+            return 10000;
+        }
+
+        private static void SendStatistic(ChromeDriver driver)
+        {
+            if (DateTime.Now.Hour > 12)
+            {
+                if (!statWasSent)
+                {
+                    statWasSent = true;
+                    SendSms("Дуэлей:" + numberGood + ", из них ботов:" + botsCount + "dungeons:" + dungeonCount, driver);
+                }
+            }
+            else
+            {
+                statWasSent = false;
+            }
+        }
+
         private static void StartDungeon(ChromeDriver driver, string site)
         {
-            driver.Navigate().GoToUrl(site + "dungeon/");            
+            driver.Navigate().GoToUrl(site + "dungeon/");
 
             if (IsActiveDuelNow(driver))
             {
@@ -125,7 +268,9 @@ namespace WebDriverScraping
                 if (href != null && href.GetAttribute("href") != "http://elem.mobi/story/")
                 {
                     href.Click();
+                    dungeonCount++;
                     ProcessDungeon(driver);
+                    break;
                 }
             }
 
@@ -133,19 +278,21 @@ namespace WebDriverScraping
 
         private static void ProcessDungeon(ChromeDriver driver)
         {
-            do
+            while (!IsEndOfAttack(driver))
             {
                 var elemToClick = GetAttackLinkCardForDungeon(driver);
-                elemToClick.Click();
+                if (elemToClick != null)
+                {
+                    elemToClick.Click();
+                }
             }
-            while (!IsEndOfAttack(driver));
         }
 
         public static bool StartDuel(ChromeDriver driver, string site, int myHP, int myRate)
         {
             //find a enemy
-            int maxAttempt = 500;
-            int maxAttemptToFindWIthRate = 200;
+            int maxAttempt = 700;
+            int maxAttemptToFindWIthRate = -3;
             int attemptToFindWIthRate = 0;
             int attempt = 0;
             var enemyRate = 0;
@@ -172,17 +319,17 @@ namespace WebDriverScraping
 
                         if (attempt > maxAttempt)
                         {
-                            RaiseFailure("Не могу найти противника!! Попыток:" + attempt, driver);
+                            RaiseFailure("Не могу найти противника!! Попыток:" + attempt + ". Ботов найдено: " + botsCount, driver);
                             attempt = 0;
                         }
                     }
                     while (!IsEnemyAttracted(enemyHp, myHP));
 
-                    isTopLiga = IsTopInLiga(driver);
+                    isTopLiga = false;//IsTopInLiga(driver);
                     var enemyName = GetEnemyName(driver);
                     enemyRate = int.MaxValue;
                     if (enemyName.Contains(" ")) //check at bot enemy
-                    { 
+                    {
                         enemyRate = GetEnemyRate(driver, enemyName, site);
                     }
 
@@ -193,6 +340,7 @@ namespace WebDriverScraping
 
                 //attack
                 driver.Navigate().GoToUrl(site + "duel/tobattle/");
+                numberGood++;
             }
 
             do
@@ -219,7 +367,7 @@ namespace WebDriverScraping
             {
                 return false;
             }
-            
+
         }
 
         private static bool IsEnemyAttracted(int enemyHp, int myHP)
@@ -239,6 +387,91 @@ namespace WebDriverScraping
             //senSMS
             SendSms(failReason, driver);
             Thread.Sleep(timeout);
+        }
+
+
+        private static int SurvivalAttempt = 0;
+        private static int MaxSurvivalAttempt = 10;
+        private static int SurvivalDayNumber;
+        private static bool IsSurvivalRequered(ChromeDriver driver)
+        {
+            if (SurvivalDayNumber == DateTime.Now.Day)
+            {
+                return false;
+            }
+
+            if (SurvivalAttempt > MaxSurvivalAttempt)
+            {
+                SurvivalDayNumber = DateTime.Now.Day;
+                SurvivalAttempt = 0;
+                return false;
+            }
+
+            SurvivalAttempt++;
+            return true;
+
+            var infoBlock = driver.FindElementsByCssSelector(".c_fe.pt10 .c_99.cntr.small");
+            if (infoBlock.Any())
+            {
+                SurvivalAttempt++;
+                return true;
+            };
+
+            return false;
+        }
+
+        private static IWebElement GetSurvivalAttackLinkCard(ChromeDriver driver)
+        {
+            var cards = driver.FindElementsByCssSelector(".w3card");
+            var clickCount = 0;
+            while (cards.Any())
+            {
+                foreach (var card in cards)
+                {
+                    var c_dmg15 = card.FindElements(By.CssSelector(".c_dmg15"));
+                    if (c_dmg15.Any())
+                    {
+                        return card.FindElements(By.ClassName("card")).First(x => x.FindElements(By.ClassName("fade_out")).Any()); ;
+                    }
+                }
+
+                var nextTarget = driver.FindElementsByCssSelector(".cntr a.ml5.btn.grey.w100px.mt5").FirstOrDefault();
+                
+                if (nextTarget != null && clickCount < 6)
+                {
+                    nextTarget.Click();
+                    clickCount++;
+                    cards = driver.FindElementsByCssSelector(".w3card");
+                }
+                else
+                {
+                    clickCount = 0;
+                    while (driver.FindElementsByCssSelector(".w3card .time .fade_out").Any())
+                    {
+                        var refresh = driver.FindElementsByCssSelector(".cntr .btn.blue.w100px.mt5.mr5").FirstOrDefault();
+                        if (refresh != null)
+                        {
+                            refresh.Click();
+                            Thread.Sleep(1000);
+                        }
+                        else
+                        {
+                            return null;
+                        }
+                        
+                    }
+
+                    return !IsEndOfAttack(driver) ? GetAttackLinkCard(driver) : null;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsSurvivalJoined(ChromeDriver driver)
+        {
+            return driver.FindElementsByCssSelector(".c_orange.pt10").Any() 
+                || driver.FindElementsByCssSelector("div.brd.mr5.ml5.mb10.inbl").Any();
         }
 
         private static bool IsActiveDuelNow(ChromeDriver driver)
@@ -263,6 +496,11 @@ namespace WebDriverScraping
         private static IWebElement GetAttackLinkCard(ChromeDriver driver)
         {
             var cards = driver.FindElementsByCssSelector(".w3card");
+            if (!cards.Any())
+            {
+                return null;
+            }
+
             var attackPower = new List<KeyValuePair<double, IWebElement>>();
 
             foreach (var card in cards)
@@ -285,7 +523,7 @@ namespace WebDriverScraping
                 var myAttack = Convert.ToInt32(stats.Last().Text.Trim());
 
                 var damage = myAttack * coeff - enemyAttack * (2.0 - coeff);
-                IWebElement cardLink = card.FindElement(By.ClassName("card"));
+                IWebElement cardLink = card.FindElements(By.ClassName("card")).First(x => x.FindElements(By.ClassName("fade_out")).Any());
 
                 attackPower.Add(new KeyValuePair<double, IWebElement>(damage, cardLink));
             }
@@ -298,7 +536,7 @@ namespace WebDriverScraping
         private static IWebElement GetAttackLinkCardForDungeon(ChromeDriver driver)
         {
             var maxStat = driver.FindElementsByCssSelector(".w3card .stat").Max(stat => Convert.ToInt32(stat.Text.Trim()));
-            var result  = driver.FindElementsByCssSelector(".w3card .stat").FirstOrDefault(stat => Convert.ToInt32(stat.Text.Trim()) >= maxStat);
+            var result = driver.FindElementsByCssSelector(".w3card .stat").FirstOrDefault(stat => Convert.ToInt32(stat.Text.Trim()) >= maxStat);
             return result;
         }
 
@@ -329,13 +567,15 @@ namespace WebDriverScraping
             driver.Navigate().GoToUrl(site + "online/");
             var findInput = driver.FindElementByName("slogin");
             findInput.SendKeys(enemyName);
-            
+
             findInput.Submit();
 
             if (!driver.Url.Contains("user"))
             {
+                botsCount++;
                 return 0;
-            }else
+            }
+            else
             {
                 return GetRate(driver, site);
             }
